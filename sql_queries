@@ -1,0 +1,456 @@
+-- A. Customer Journey
+-- Based off the 8 sample customers provided in the sample from the subscriptions table, write a brief description about each customer’s onboarding journey.
+--   Try to keep it as short as possible - you may also want to run some sort of join to make your explanations a bit easier!
+-- 	 the customer id are: 1,2,11,13,15,16,18,19
+    
+SELECT * FROM plans;
+SELECT * FROM subscriptions;
+ 
+SELECT 
+	s.customer_id,
+    s.start_date,
+    p.plan_name
+
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+WHERE customer_id IN(1,2,11,13,15,16,18,19)
+
+ORDER BY 1,2;
+
+-- BRIEF DESCRIPTION: 
+-- Customer_id 1 started his subscription with a trial period, then after the end of the trial period he subscribed for the basic monthly plan.
+-- Customer_id 2 started with a trial period, then moved to an pro annual subscription.
+-- Customer_id 11 started with a trial period, but at the end of the trial he didn't subscribe for any plan.
+-- Customer_id 13 started with a free trial period then moved to a basic monthly plan.
+-- Customer_id 15 started with a trial period then moved to a pro monthly subscription
+-- Customer_id 16 started with a trial period, after 7 days moved to a basic monthly plan and after 14 days moved to a pro annual subscription.
+-- Customer_id 18 started with a trial period and then moved to a pro monthly plan.
+-- Customer_id 19 started with a free trial, then after 7 days he moved to pro monthly and immediately to pro annual on the same day. 
+    
+    
+    
+-- B. Data Analysis Questions
+-- 1 How many customers has Foodie-Fi ever had?
+-- 2 What is the monthly distribution of trial plan start_date values for our dataset - use the start of the month as the group by value
+-- 3 What plan start_date values occur after the year 2020 for our dataset? Show the breakdown by count of events for each plan_name
+-- 4 What is the customer count and percentage of customers who have churned rounded to 1 decimal place?
+-- 5 How many customers have churned straight after their initial free trial - what percentage is this rounded to the nearest whole number?
+-- 6 What is the number and percentage of customer plans after their initial free trial?
+-- 7 What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+-- 8 How many customers have upgraded to an annual plan in 2020?
+-- 9 How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+-- 10 Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+-- 11 How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
+    
+    
+-- 1 How many customers has Foodie-Fi ever had?
+
+SELECT
+    COUNT(DISTINCT customer_id) AS total_customers
+FROM subscriptions;
+    
+    
+-- 2 What is the monthly distribution of trial plan start_date values for our dataset - use the start of the month as the group by value
+
+SELECT
+    YEAR(start_date) AS year_,
+    MONTH(start_date) AS m_,
+    MONTHNAME(start_date) AS month_,
+    COUNT(plan_name) AS trial_plans
+FROM plans p
+    LEFT JOIN subscriptions s
+        ON p.plan_id = s.plan_id
+WHERE plan_name = "trial"
+GROUP BY 1,2,3
+ORDER BY 1,2;
+
+
+-- 3 What plan start_date values occur after the year 2020 for our dataset? Show the breakdown by count of events for each plan_name
+
+SELECT
+        p.plan_name,
+        COUNT(s.customer_id)
+    FROM plans p
+        LEFT JOIN subscriptions s
+            ON p.plan_id = s.plan_id
+    WHERE start_date > "2020-12-31"
+    GROUP BY 1;
+
+-- 4 What is the customer count and percentage of customers who have churned rounded to 1 decimal place?
+
+SELECT
+    COUNT(DISTINCT customer_id) AS total_customers,
+    COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) AS churned_customers,
+    ROUND(COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) /
+        COUNT(DISTINCT customer_id) * 100,1) AS pct_churn
+FROM subscriptions;
+
+        
+        
+-- 5 How many customers have churned straight after their initial free trial - what percentage is this rounded to the nearest whole number?        
+
+SELECT -- 3 count the number of total customers, and the churned customers (plan_id = 4)
+    COUNT(customer_id) AS total_customers,
+    COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) AS church_after_trial,
+    CEILING(COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) / COUNT(customer_id) * 100) AS pct_of_church_after_trial
+FROM
+(
+SELECT -- 2 we join the list(1) with the subscriptions table so that we can see their status
+    a.customer_id,
+    a.after_1_week,
+    s.plan_id
+FROM
+(
+SELECT -- 1 generate a list with all customers after 1 week 
+    customer_id AS customer_id,
+    DATE_ADD(MIN(start_date), INTERVAL 7 DAY) AS after_1_week
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = s.plan_id
+GROUP BY 1
+ORDER BY 1
+) AS a
+    LEFT JOIN subscriptions s
+        ON a.customer_id = s.customer_id AND
+            a.after_1_week = s.start_date) AS b;
+            
+
+
+-- 6 What is the number and percentage of customer plans after their initial free trial?
+-- I can use the same query used for the n.5 exercise to obtain all the plan id of the customers after the end of the trial period
+SELECT
+    COUNT(CASE WHEN plan_id = 1 THEN 1 ELSE NULL END) AS basic_monthly,
+    ROUND((COUNT(CASE WHEN plan_id = 1 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_basic_monthly,
+    COUNT(CASE WHEN plan_id = 2 THEN 1 ELSE NULL END) AS pro_monthly,
+    ROUND((COUNT(CASE WHEN plan_id = 2 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_pro_monthly,
+    COUNT(CASE WHEN plan_id = 3 THEN 1 ELSE NULL END) AS pro_annual,
+    ROUND((COUNT(CASE WHEN plan_id = 3 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_pro_annual,
+    COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) AS churn,
+    ROUND((COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_churn
+FROM
+(
+SELECT
+    a.customer_id,
+    a.after_1_week,
+    s.plan_id
+FROM
+(
+SELECT
+    customer_id AS customer_id,
+    DATE_ADD(MIN(start_date), INTERVAL 7 DAY) AS after_1_week
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = s.plan_id
+GROUP BY 1
+ORDER BY 1
+) AS a
+    LEFT JOIN subscriptions s
+        ON a.customer_id = s.customer_id AND
+            a.after_1_week = s.start_date) AS b; 
+
+-- 7 What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+SELECT
+    COUNT(CASE WHEN plan_id = 0 THEN 1 ELSE NULL END) AS trial,
+    ROUND((COUNT(CASE WHEN plan_id = 0 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_trial,
+    COUNT(CASE WHEN plan_id = 1 THEN 1 ELSE NULL END) AS basic_monthly,
+    ROUND((COUNT(CASE WHEN plan_id = 1 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_basic_monthly,
+    COUNT(CASE WHEN plan_id = 2 THEN 1 ELSE NULL END) AS pro_monthly,
+    ROUND((COUNT(CASE WHEN plan_id = 2 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_pro_monthly,
+    COUNT(CASE WHEN plan_id = 3 THEN 1 ELSE NULL END) AS pro_annual,
+    ROUND((COUNT(CASE WHEN plan_id = 3 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_pro_annual,
+    COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) AS churn,
+    ROUND((COUNT(CASE WHEN plan_id = 4 THEN 1 ELSE NULL END) / COUNT(customer_id)) * 100,2) AS pct_churn
+FROM(
+ 
+SELECT -- 2 we join the list(1) with the subscriptions table so that we can see their status
+    a.customer_id,
+    a.after_1_week,
+    s.plan_id
+FROM (
+SELECT -- 1 generate a list with all customers after 1 week and before the 2020-12-31
+    customer_id AS customer_id,
+    MAX(start_date) AS after_1_week
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = s.plan_id
+WHERE start_date < "2020-12-31"
+GROUP BY 1
+ORDER BY 1)
+AS a
+    LEFT JOIN subscriptions s
+        ON a.customer_id = s.customer_id AND
+            a.after_1_week = s.start_date) AS b;
+
+-- 8 How many customers have upgraded to an annual plan in 2020?           annual plan id = 3
+
+SELECT
+    COUNT(plan_id) AS total_pro_annual_2020
+FROM subscriptions
+WHERE plan_id = 3
+    AND start_date <= "2020-12-31";
+
+
+
+-- 9 How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+-- Here I need the first week date for each customer,
+-- then search for the date when they became pro.
+-- subtract the 2 date, and calculate the average
+
+
+-- VERSION 1 TEMPORARY TABLES
+-- show a table with all steps from each customer, from registration to the final subscription plan selected
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1;
+
+-- filter only the trial plans
+CREATE TEMPORARY TABLE trial_customers
+SELECT
+	customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1) AS a
+WHERE plan_name = "trial";
+
+-- filter only the pro subscription plans
+CREATE TEMPORARY TABLE pro_annual_customers
+SELECT
+	customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1) AS a
+WHERE plan_name = "pro annual";
+
+
+SELECT
+	CEILING(AVG(days_to_became_pro)) AS average_days_to_pro
+FROM (
+SELECT
+	pro.customer_id,
+    DATEDIFF(pro.start_date, trial.start_date) AS days_to_became_pro
+FROM pro_annual_customers pro
+	LEFT JOIN trial_customers trial
+		ON pro.customer_id = trial.customer_id) AS a;
+
+
+
+VERSION 2 CTE
+-- 9 using CTE instead of TEMPORARY TABLES
+WITH trial_users AS (
+SELECT
+    s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = p.plan_id
+WHERE plan_name = "trial"
+ORDER BY 1),
+pro_users AS (
+SELECT
+    customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT
+    s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = p.plan_id
+ORDER BY 1) AS a
+WHERE plan_name = "pro annual"
+)
+SELECT
+    CEILING(AVG(days_to_became_pro)) AS average_days_to_pro
+FROM (
+    SELECT
+        pu.customer_id,
+        DATEDIFF(pu.start_date, tu.start_date) AS days_to_became_pro
+    FROM pro_users pu
+        LEFT JOIN trial_users tu
+            ON pu.customer_id = tu.customer_id) AS f;
+
+
+
+
+
+
+
+-- 10 Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+-- using the 2 temporary tables created before
+SELECT
+	CEILING(AVG(period_0_30)) AS avg_0_30,
+    CEILING(AVG(period_31_60)) AS avg_31_60,
+    CEILING(AVG(period_61_120)) avg_61_120,
+    CEILING(AVG(period_more_than_120)) AS avg_over_120
+FROM (
+SELECT
+	CASE WHEN DATEDIFF(pro.start_date, trial.start_date) <= 30 THEN DATEDIFF(pro.start_date, trial.start_date) ELSE NULL END AS period_0_30,
+    CASE WHEN DATEDIFF(pro.start_date, trial.start_date) > 30 AND DATEDIFF(pro.start_date, trial.start_date) <= 60 THEN DATEDIFF(pro.start_date, trial.start_date) ELSE NULL END AS period_31_60,
+    CASE WHEN DATEDIFF(pro.start_date, trial.start_date) > 60 AND DATEDIFF(pro.start_date, trial.start_date) <= 120 THEN DATEDIFF(pro.start_date, trial.start_date) ELSE NULL END AS period_61_120,
+    CASE WHEN DATEDIFF(pro.start_date, trial.start_date) > 120 THEN DATEDIFF(pro.start_date, trial.start_date) ELSE NULL END AS period_more_than_120
+FROM pro_annual_customers pro
+	LEFT JOIN trial_customers trial
+		ON pro.customer_id = trial.customer_id) AS a;
+
+
+-- 11 How many customers downgraded from a pro monthly to a basic monthly plan in 2020?  0 customers, VERIFIED MANUALLY
+
+-- create temporary table PRO MONTHLY PLANS
+CREATE TEMPORARY TABLE pro_monthly
+SELECT
+    customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT
+    s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = p.plan_id
+ORDER BY 1) AS a
+WHERE plan_name = "pro monthly";
+ 
+-- create temporary table BASIC MONTHLY PLANS
+SELECT
+    customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT
+    s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+    LEFT JOIN plans p
+        ON s.plan_id = p.plan_id
+ORDER BY 1) AS b
+WHERE plan_name = "basic monthly";
+ 
+ 
+-- combine the 2 tables and calculate
+ 
+SELECT
+    COUNT(pro.customer_id) AS downgraded_customers
+FROM pro_monthly pro
+    INNER JOIN basic_monthly basic
+        ON pro.customer_id = basic.customer_id
+            WHERE basic.start_date > pro.start_date;
+
+
+-- show a table with all steps from each customer, from registration to the final subscription plan selected
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1;
+SELECT * FROM subscriptions;
+SELECT * FROM plans;
+
+
+-- filter only the pro monthly plans
+CREATE TEMPORARY TABLE pro_monthly
+SELECT
+	customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1) AS a
+WHERE plan_name = "pro monthly";
+
+
+-- filter only the basic monthly plans
+CREATE TEMPORARY TABLE basic_monthly
+SELECT 
+	customer_id,
+    plan_id,
+    start_date,
+    plan_name
+FROM (
+SELECT 
+	s.customer_id,
+    s.plan_id,
+    s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+ORDER BY 1) AS b
+WHERE plan_name = "basic monthly";
+
+
+SELECT
+	pro.customer_id,
+    pro.start_date
+FROM pro_monthly pro
+	INNER JOIN basic_monthly basic
+		ON pro.customer_id = basic.customer_id
+			WHERE basic.start_date > pro.start_date;
+
+
+SELECT * FROM subscriptions
+WHERE customer_id = 7;
+
+SELECT * FROM plans;
+
+
+SELECT 
+	s.customer_id,
+	s.start_date,
+    p.plan_name
+FROM subscriptions s
+	LEFT JOIN plans p
+		ON s.plan_id = p.plan_id
+WHERE p.plan_name IN("basic monthly",  "pro monthly")
+ORDER BY 1,2;
